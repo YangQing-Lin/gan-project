@@ -74,15 +74,17 @@ def train():
             loss_disc.backward()
             optim_disc.step()
 
-            # === 训练生成器 ===
-            fake_output = disc(fake_s)
-            loss_adv = criterion(fake_output, real_labels)
-            loss_l1 = F.l1_loss(fake_s, s_real)
-            loss_gen = loss_adv + 100 * loss_l1  # L1 权重 = 100
+            # === 训练生成器（2次）===
+            for _ in range(2):
+                fake_s = gen(m)
+                fake_output = disc(fake_s)
+                loss_adv = criterion(fake_output, real_labels)
+                loss_l1 = F.l1_loss(fake_s, s_real)
+                loss_gen = loss_adv + 100 * loss_l1
 
-            optim_gen.zero_grad()
-            loss_gen.backward()
-            optim_gen.step()
+                optim_gen.zero_grad()
+                loss_gen.backward()
+                optim_gen.step()
 
             epoch_g_loss += loss_gen.item()
             epoch_d_loss += loss_disc.item()
