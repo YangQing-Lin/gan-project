@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# PyTorch 模型权重
+*.pth
+*.pt
+*.ckpt
+
+# 数据和输出
+data/
+output/
+static/
+*.flac
+*.wav
+*.mp3
+
+# 图片输出
+loss_curve.png
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 系统文件
+.DS_Store
+Thumbs.db
