@@ -2,14 +2,15 @@ import argparse
 import os
 import numpy as np
 import torch
-import librosa
+import torchaudio
+import soundfile as sf
 import matplotlib.pyplot as plt
 from model import Generator
 
 OUTPUT_DIR = "output"
 
 
-def validate(input_stereo, model_path="gen.pth", sr=22050):
+def validate(input_stereo, model_path="gen.pth", sr=44100):
     # 确保输出目录存在
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -23,14 +24,19 @@ def validate(input_stereo, model_path="gen.pth", sr=22050):
     print(f"Using device: {device}")
 
     # 加载原始立体声
-    audio, _ = librosa.load(input_stereo, sr=sr, mono=False)
-    if audio.ndim == 1:
+    audio_np, file_sr = sf.read(input_stereo, always_2d=True)  # (samples, channels)
+    audio = torch.from_numpy(audio_np.T).float()  # [channels, time]
+
+    if file_sr != sr:
+        audio = torchaudio.functional.resample(audio, file_sr, sr)
+
+    if audio.shape[0] < 2:
         print("Error: 输入必须是双声道音频")
         return
 
     L, R = audio[0], audio[1]
-    M_real = (L + R) / 2
-    S_real = (L - R) / 2
+    M_real = ((L + R) / 2).numpy()
+    S_real = ((L - R) / 2).numpy()
 
     # 加载模型
     gen = Generator()
@@ -39,7 +45,7 @@ def validate(input_stereo, model_path="gen.pth", sr=22050):
     gen.train(False)
 
     # 分段预测（每段 16384 采样点）
-    segment_length = 16384
+    segment_length = 8192
     S_pred_list = []
 
     for i in range(0, len(M_real), segment_length):

@@ -21,7 +21,7 @@ def save_stereo_audio(L, R, filepath, sr=22050):
 def plot_loss_curve(g_losses, d_losses, save_path="loss_curve.png"):
     """绘制并保存 Loss 曲线"""
     plt.figure(figsize=(10, 5))
-    plt.plot(g_losses, label="Generator Loss")
+    plt.plot(g_losses, label="Generator Adv Loss")
     plt.plot(d_losses, label="Discriminator Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")

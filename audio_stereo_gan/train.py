@@ -19,33 +19,44 @@ def train():
         device = torch.device("cpu")
     print(f"Using device: {device}")
 
-    # 加载数据集
-    dataset = AudioDataset("data/")
-    if len(dataset) == 0:
-        print("No audio segments found. Please add stereo audio files to data/")
-        return
+    # 训练参数
+    segment_length = 8192
+    sr = 44100
+    batch_size = 64
+    epochs = 30
+    lambda_l1 = 5.0
 
-    loader = DataLoader(dataset, batch_size=256, shuffle=True)
+    # 加载数据集
+    dataset = AudioDataset(
+        ["data", "static"],
+        sr=sr,
+        segment_length=segment_length,
+        max_segments_per_file=2000,
+    )
+    if len(dataset) == 0:
+        print("No audio segments found. Please add stereo audio files to data/ or static/")
+        return
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     print(f"Loaded {len(dataset)} audio segments")
 
     # 初始化模型
-    gen = Generator().to(device)
-    disc = Discriminator().to(device)
+    gen = Generator(segment_length=segment_length).to(device)
+    disc = Discriminator(segment_length=segment_length).to(device)
 
     # 优化器
-    optim_gen = torch.optim.Adam(gen.parameters(), lr=0.0002, betas=(0.5, 0.999))
-    optim_disc = torch.optim.Adam(disc.parameters(), lr=0.0002, betas=(0.5, 0.999))
+    optim_gen = torch.optim.Adam(gen.parameters(), lr=0.0001, betas=(0.5, 0.999))
+    optim_disc = torch.optim.Adam(disc.parameters(), lr=0.0001, betas=(0.5, 0.999))
 
     # 损失函数
     criterion = nn.BCELoss()
 
-    # 训练参数
-    epochs = 50
-    g_losses = []
+    g_losses = []  # 记录生成器对抗损失，便于观察是否收敛到 ~0.7
+    l1_epoch_losses = []
     d_losses = []
 
     for epoch in range(epochs):
-        epoch_g_loss = 0.0
+        epoch_g_adv = 0.0
+        epoch_l1 = 0.0
         epoch_d_loss = 0.0
 
         pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{epochs}")
@@ -57,7 +68,7 @@ def train():
             fake_s = gen(m)
 
             # 真实样本标签
-            real_labels = torch.ones(batch_size, 1).to(device)
+            real_labels = torch.full((batch_size, 1), 0.9, device=device)  # label smoothing
             fake_labels = torch.zeros(batch_size, 1).to(device)
 
             # 判别真实 S
@@ -80,26 +91,35 @@ def train():
                 fake_output = disc(fake_s)
                 loss_adv = criterion(fake_output, real_labels)
                 loss_l1 = F.l1_loss(fake_s, s_real)
-                loss_gen = loss_adv + 100 * loss_l1
+                loss_gen = loss_adv + lambda_l1 * loss_l1
 
                 optim_gen.zero_grad()
                 loss_gen.backward()
+                torch.nn.utils.clip_grad_norm_(gen.parameters(), max_norm=5.0)
                 optim_gen.step()
 
-            epoch_g_loss += loss_gen.item()
+            epoch_g_adv += loss_adv.item()
+            epoch_l1 += loss_l1.item()
             epoch_d_loss += loss_disc.item()
 
             pbar.set_postfix({
                 'D_loss': f'{loss_disc.item():.4f}',
-                'G_loss': f'{loss_gen.item():.4f}'
+                'G_adv': f'{loss_adv.item():.4f}',
+                'L1': f'{loss_l1.item():.4f}'
             })
 
-        avg_g_loss = epoch_g_loss / len(loader)
+        updates_per_epoch = len(loader) * 2  # 每个 batch 训练 2 次生成器
+        avg_g_adv = epoch_g_adv / updates_per_epoch
+        avg_l1 = epoch_l1 / updates_per_epoch
         avg_d_loss = epoch_d_loss / len(loader)
-        g_losses.append(avg_g_loss)
+        g_losses.append(avg_g_adv)
+        l1_epoch_losses.append(avg_l1)
         d_losses.append(avg_d_loss)
 
-        print(f"Epoch {epoch+1}/{epochs} - D_loss: {avg_d_loss:.4f}, G_loss: {avg_g_loss:.4f}")
+        print(
+            f"Epoch {epoch+1}/{epochs} - D_loss: {avg_d_loss:.4f}, "
+            f"G_adv: {avg_g_adv:.4f}, L1: {avg_l1:.4f}"
+        )
 
         # 每轮更新损失曲线图
         plot_loss_curve(g_losses, d_losses)
